@@ -1,10 +1,17 @@
 #!/usr/bin/env python
 
+# Example usage: python xml_merge.py --file1 CellSorting_PIF_complete_alt_11_18_2015_10_20_02/simulation_cs_complete_results.xml --file2 CellSorting_cc3d_05_04_2016_11_55_50/simulation_cs_complete_results.xml -o output3.xml --t1start 0 --t1end 4500 --t2start 0 --t2end 999 -p
+
 import sys
 import numpy as NP
 import lxml.etree as ET
 import matplotlib.pyplot as PLT
 from optparse import OptionParser
+
+# Tolerance for merge
+tol_area_relerr = 0.1
+tol_perim_relerr = 0.1
+tol_centroid_err = 1
 
 parser = OptionParser()
 
@@ -55,11 +62,9 @@ root = xml1.getroot()
 # Remove all elements from xml1 not within range
 for time in xml1.getiterator('time'):
 	time_num = int(time.get('t'))
-	print(time_num)
 
 	if(time_num < t1start or time_num > t1end):
 		root.remove(time)
-		print('x')
 
 	if(time_num == t1end):
 		time1end = time;
@@ -71,37 +76,41 @@ for time in xml2.getiterator('time'):
 	# Check that the last time element from xml1 matches first from xml2
 	if(time_num == t2start):
 
+		t1_cells = time1end.getchildren()
+		t2_cells = time.getchildren()
+		num_cell = len(t1_cells)
+		cell_range = range(num_cell)
+
+		area_err = NP.zeros(num_cell)
+		perim_err = NP.zeros(num_cell)
+		centroid_err = NP.zeros(num_cell)
+
+		for (cell1, cell2, num) in zip(t1_cells, t2_cells, cell_range):
+			area_err_abs = abs(float(cell1.get('area')) - float(cell2.get('area')))
+			perim_err_abs = abs(float(cell1.get('perimeter')) - float(cell2.get('perimeter')))
+
+
+			area_err[num] = area_err_abs/(float(cell1.get('area')))
+			perim_err[num] = perim_err_abs/(float(cell1.get('perimeter')))
+
+			x1 = float(cell1.get('x'))
+			y1 = float(cell1.get('y'))
+			x2 = float(cell2.get('x'))
+			y2 = float(cell2.get('y'))
+
+			centroid_err[num] = NP.sqrt(pow(x1-x2,2) + pow(y1-y2,2))
+
 		if ploterror:
-			t1_cells = time1end.getchildren()
-			t2_cells = time.getchildren()
-			num_cell = len(t1_cells)
-			cell_range = range(num_cell)
-
-			area_err = NP.zeros(num_cell)
-			perim_err = NP.zeros(num_cell)
-			centroid_err = NP.zeros(num_cell)
-
-			for (cell1, cell2, num) in zip(t1_cells, t2_cells, cell_range):
-				area_err[num] = abs(float(cell1.get('area')) - float(cell2.get('area')))
-				perim_err[num] = abs(float(cell1.get('perimeter')) - float(cell2.get('perimeter')))
-
-				x1 = float(cell1.get('x'))
-				y1 = float(cell1.get('y'))
-				x2 = float(cell2.get('x'))
-				y2 = float(cell2.get('y'))
-
-				centroid_err[num] = NP.sqrt(pow(x1-x2,2) + pow(y1-y2,2))
-
 			PLT.figure(1)
 			PLT.plot(cell_range,area_err)
 			PLT.xlabel('Cell')
-			PLT.ylabel('Absolute error in area')
+			PLT.ylabel('Relative error in area')
 			PLT.savefig('area_err.png', bbox_inches='tight', dpi = 400)
 
 			PLT.figure(2)
 			PLT.plot(cell_range,perim_err)
 			PLT.xlabel('Cell')
-			PLT.ylabel('Absolute error in perimeter')
+			PLT.ylabel('Relative error in perimeter')
 			PLT.savefig('perim_err.png', bbox_inches='tight', dpi = 400)
 
 			PLT.figure(3)
@@ -109,6 +118,17 @@ for time in xml2.getiterator('time'):
 			PLT.xlabel('Cell')
 			PLT.ylabel('Absolute error in centroid')
 			PLT.savefig('centroid_err.png', bbox_inches='tight', dpi = 400)
+
+		max_area_relerr = NP.max(area_err)
+		max_perim_relerr = NP.max(perim_err)
+		max_centroid_err = NP.max(centroid_err)
+
+		if(max_area_relerr > tol_area_relerr or max_perim_relerr > tol_perim_relerr or max_centroid_err > tol_centroid_err):
+			if ploterror:
+				PLT.show()
+
+			sys.stderr.write('State at t1end does not match state at t2start')
+			sys.exit()
 
 	if(time_num > t2start and time_num <= t2end):
 		time_num_new = t1end + (time_num - t2start)
@@ -125,8 +145,3 @@ outfile.close()
 
 if ploterror:
 	PLT.show()
-
-
-
-
-
