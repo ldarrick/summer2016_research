@@ -2,6 +2,10 @@
 
 # Example usage: python xml_merge.py --file1 CellSorting_PIF_complete_alt_11_18_2015_10_20_02/simulation_cs_complete_results.xml --file2 CellSorting_cc3d_05_04_2016_11_55_50/simulation_cs_complete_results.xml -o output3.xml --t1start 0 --t1end 4500 --t2start 0 --t2end 999 -p
 
+# Note: The first XML file (xml1 is taken to have the "true" value at the merge point)
+# This means that the relative error is calculated relative to this and also this is the
+# value that is kept in the final merged xml file.
+
 import sys
 import numpy as NP
 import lxml.etree as ET
@@ -38,17 +42,6 @@ if options.ploterror:
 	ploterror = 1
 else:
 	ploterror = 0
-
-# inputfile1 = 'CellSorting_PIF_complete_alt_11_18_2015_10_20_02/simulation_cs_complete_results.xml'
-# inputfile2 = 'CellSorting_cc3d_05_04_2016_11_55_50/simulation_cs_complete_results.xml'
-# outputfile = 'output.xml'
-
-# t1start = 0
-# t1end = 4499
-# t2start = 0
-# t2end = 999
-
-# ploterror = 0
 
 infile1 = open(inputfile1,'r')
 infile2 = open(inputfile2,'r')
@@ -89,7 +82,7 @@ for time in xml2.getiterator('time'):
 			area_err_abs = abs(float(cell1.get('area')) - float(cell2.get('area')))
 			perim_err_abs = abs(float(cell1.get('perimeter')) - float(cell2.get('perimeter')))
 
-
+			# Note cell1 is used as the "true" value
 			area_err[num] = area_err_abs/(float(cell1.get('area')))
 			perim_err[num] = perim_err_abs/(float(cell1.get('perimeter')))
 
@@ -98,7 +91,7 @@ for time in xml2.getiterator('time'):
 			x2 = float(cell2.get('x'))
 			y2 = float(cell2.get('y'))
 
-			centroid_err[num] = NP.sqrt(pow(x1-x2,2) + pow(y1-y2,2))
+			centroid_err[num] = NP.sqrt((x1-x2)**2 + (y1-y2)**2)
 
 		if ploterror:
 			PLT.figure(1)
