@@ -10,11 +10,13 @@ import sys
 import numpy as NP
 import lxml.etree as ET
 import matplotlib.pyplot as PLT
+import statsmodels.api as SM
+from scipy import stats
 from optparse import OptionParser
 
-# Tolerance for merge
-tol_area_relerr = 0.1
-tol_perim_relerr = 0.1
+# Parameter for 95% confidence in KS-test
+# Source: https://www.webdepot.umontreal.ca/Usagers/angers/MonDepotPublic/STT3500H10/Critical_KS.pdf
+c_alpha = 1.36
 tol_centroid_err = 1
 
 parser = OptionParser()
@@ -27,6 +29,7 @@ parser.add_option("--t1end", action="store", type="int", dest="t1end", help="end
 parser.add_option("--t2start", action="store", type="int", dest="t2start", help="start time of second file", metavar="INT")
 parser.add_option("--t2end", action="store", type="int", dest="t2end", help="end time of second file", metavar="INT")
 parser.add_option("-p","--plot", action="store_true", dest="ploterror", default=False, help="plot error magnitudes at merge time")
+parser.add_option("-f","--force", action="store_true", dest="force", default=False, help="force merge regardless of errors at merge point")
 
 (options, args) = parser.parse_args()
 
@@ -42,6 +45,11 @@ if options.ploterror:
 	ploterror = 1
 else:
 	ploterror = 0
+
+if options.force:
+	forcemerge = 1
+else:
+	forcemerge = 0
 
 infile1 = open(inputfile1,'r')
 infile2 = open(inputfile2,'r')
@@ -74,17 +82,18 @@ for time in xml2.getiterator('time'):
 		num_cell = len(t1_cells)
 		cell_range = range(num_cell)
 
-		area_err = NP.zeros(num_cell)
-		perim_err = NP.zeros(num_cell)
+		area1 = NP.zeros(num_cell)
+		area2 = NP.zeros(num_cell)
+		perim1 = NP.zeros(num_cell)
+		perim2 = NP.zeros(num_cell)
+
 		centroid_err = NP.zeros(num_cell)
 
 		for (cell1, cell2, num) in zip(t1_cells, t2_cells, cell_range):
-			area_err_abs = abs(float(cell1.get('area')) - float(cell2.get('area')))
-			perim_err_abs = abs(float(cell1.get('perimeter')) - float(cell2.get('perimeter')))
-
-			# Note cell1 is used as the "true" value
-			area_err[num] = area_err_abs/(float(cell1.get('area')))
-			perim_err[num] = perim_err_abs/(float(cell1.get('perimeter')))
+			area1[num] = float(cell1.get('area'))
+			area2[num] = float(cell2.get('area'))
+			perim1[num] = float(cell1.get('perimeter'))
+			perim2[num] = float(cell2.get('perimeter'))
 
 			x1 = float(cell1.get('x'))
 			y1 = float(cell1.get('y'))
@@ -93,35 +102,67 @@ for time in xml2.getiterator('time'):
 
 			centroid_err[num] = NP.sqrt((x1-x2)**2 + (y1-y2)**2)
 
+		# Calculate ECDFs
+		area1_ecdf = SM.distributions.ECDF(area1)
+		area2_ecdf = SM.distributions.ECDF(area2)
+		min_area = min(NP.concatenate([area1,area2]))
+		max_area = max(NP.concatenate([area1,area2]))
+		area_range = NP.linspace(min_area, max_area, 100)
+		area1_ecdf_pt = area1_ecdf(area_range)
+		area2_ecdf_pt = area2_ecdf(area_range)
+
+		perim1_ecdf = SM.distributions.ECDF(perim1)
+		perim2_ecdf = SM.distributions.ECDF(perim2)
+		min_perim = min(NP.concatenate([perim1, perim2]))
+		max_perim = max(NP.concatenate([perim1, perim2]))
+		perim_range = NP.linspace(min_perim, max_perim, 100)
+		perim1_ecdf_pt = perim1_ecdf(perim_range)
+		perim2_ecdf_pt = perim2_ecdf(perim_range)
+
+		# KS Test: https://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test#Two-sample_Kolmogorov.E2.80.93Smirnov_test
+		(D_area, p_area) = stats.ks_2samp(area1, area2)
+		(D_perim, p_perim) = stats.ks_2samp(perim1, perim2)
+		ks_threshold = c_alpha*NP.sqrt(2.0/num_cell)
+
+		print("Area and Perimeter statistics at merge time:")
+		print("Area: ks-stat: {0}, p-value: {1}".format(D_area,p_area))
+		print("Perimeter: ks-stat: {0}, p-value: {1}".format(D_perim,p_perim))
+		print("ks-value threshold at 95% confidence: {0}".format(ks_threshold))	
+
 		if ploterror:
 			PLT.figure(1)
-			PLT.plot(cell_range,area_err)
-			PLT.xlabel('Cell')
-			PLT.ylabel('Relative error in area')
-			PLT.savefig('area_err.png', bbox_inches='tight', dpi = 400)
-
-			PLT.figure(2)
-			PLT.plot(cell_range,perim_err)
-			PLT.xlabel('Cell')
-			PLT.ylabel('Relative error in perimeter')
-			PLT.savefig('perim_err.png', bbox_inches='tight', dpi = 400)
-
-			PLT.figure(3)
 			PLT.plot(cell_range,centroid_err)
 			PLT.xlabel('Cell')
 			PLT.ylabel('Absolute error in centroid')
 			PLT.savefig('centroid_err.png', bbox_inches='tight', dpi = 400)
 
-		max_area_relerr = NP.max(area_err)
-		max_perim_relerr = NP.max(perim_err)
+			PLT.figure(2)
+			PLT.step(area_range, area1_ecdf_pt)
+			PLT.step(area_range, area2_ecdf_pt)
+			PLT.xlabel('Area')
+			PLT.ylabel('CDF')
+			PLT.title('CDF of Area at merge point')
+			PLT.legend(["XML1", "XML2"], loc=4)
+			PLT.savefig('ecdf_area.png', bbox_inches='tight', dpi = 400)
+
+			PLT.figure(3)
+			PLT.step(perim_range, perim1_ecdf_pt)
+			PLT.step(perim_range, perim2_ecdf_pt)
+			PLT.xlabel('Perimeter')
+			PLT.ylabel('CDF')
+			PLT.title('CDF of Perimeter at merge point')
+			PLT.legend(["XML1", "XML2"], loc=4)
+			PLT.savefig('ecdf_perim.png', bbox_inches='tight', dpi = 400)
+
 		max_centroid_err = NP.max(centroid_err)
 
-		if(max_area_relerr > tol_area_relerr or max_perim_relerr > tol_perim_relerr or max_centroid_err > tol_centroid_err):
-			if ploterror:
-				PLT.show()
+		if not forcemerge:
+			if (D_area > ks_threshold or D_perim > ks_threshold or max_centroid_err > tol_centroid_err):
+				if ploterror:
+					PLT.show()
 
-			sys.stderr.write('State at t1end does not match state at t2start')
-			sys.exit()
+				sys.stderr.write('State at t1end does not match state at t2start either according to the KS test with 95% confidence or cells are too far.\n')
+				sys.exit()
 
 	if(time_num > t2start and time_num <= t2end):
 		time_num_new = t1end + (time_num - t2start)
