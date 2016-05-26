@@ -1,13 +1,18 @@
 #!/usr/bin/env python
 
 #
-# Last modified: 25 May 2016
+# Last modified: 26 May 2016
 # Author: Darrick Lee <y.l.darrick@gmail.com>
 # This file performs k-means clustering on the cells.
+#
+# Required Packages: scikit-learn
+#
+# Tutorial: https://github.com/jakevdp/sklearn_pycon2015
 # 
 # Note: This code assumes that the csv file has been truncated, and only has the following columns:
 # Image Number, Object Number, Area, Center_x, Center_y, Eccentricity, Major Axis Length, Minor Axis Length, Perimeter
 
+import os
 import subprocess
 import numpy as NP
 import matplotlib.pyplot as PLT
@@ -22,7 +27,7 @@ frame = -1
 outFile = 'out.csv'
 numCluster = 2
 
-# Name of images
+# Name of image folder and file
 imageFolder = 'OutlineCells/'
 imageName = 'OutlineCells'
 
@@ -42,6 +47,8 @@ if options.outFile:
 	outFile = options.outFile
 if options.cluster:
 	numCluster = options.cluster
+
+inputFileName = os.path.splitext(inputFile)[0]
 
 # Generate image file path
 frame3c = "%03d"%frame
@@ -68,6 +75,21 @@ for cell in cells:
 
 	featList.append(NP.array([cell_id, center_x, center_y, area, perimeter, major_axis, minor_axis, eccentricity]))
 
+# Perform perimeter-eccentricity (PE) clustering
+est_PE = KMeans(numCluster)
+featList = NP.array(featList)
+X_PE = featList[:,[4,7]]
+
+est_PE.fit(X_PE)
+y_PE = est_PE.predict(X_PE)
+
+# If cluster center 0 is larger than cluster center 1, then flip 0 and 1
+est_PE_cc = est_PE.cluster_centers_
+if NP.linalg.norm(est_PE_cc[0,:]) > NP.linalg.norm(est_PE_cc[1,:]):
+	y_PE_orig = NP.copy(y_PE)
+	y_PE[y_PE_orig == 0] = 1
+	y_PE[y_PE_orig == 1] = 0
+
 # Perform area-perimeter (AP) clustering
 est_AP = KMeans(numCluster)
 featList = NP.array(featList)
@@ -76,50 +98,56 @@ X_AP = featList[:,[3,4]]
 est_AP.fit(X_AP)
 y_AP = est_AP.predict(X_AP)
 
-# Perform PCA clustering
-X_prePCA = featList[:,[3,4,5,6,7]]
-pca = PCA(2)
-X_PCA = pca.fit_transform(X_prePCA)
+# If cluster center 0 is larger than cluster center 1, then flip 0 and 1
+est_AP_cc = est_AP.cluster_centers_
+if NP.linalg.norm(est_AP_cc[0,:]) > NP.linalg.norm(est_AP_cc[1,:]):
+	y_AP_orig = NP.copy(y_AP)
+	y_AP[y_AP_orig == 0] = 1
+	y_AP[y_AP_orig == 1] = 0
 
-est_PCA = KMeans(numCluster)
-est_PCA.fit(X_PCA)
-y_PCA = est_PCA.predict(X_PCA)
-
-score = accuracy_score(y_PCA, y_AP)*100
+score = accuracy_score(y_AP, y_PE)*100
 print('The two clusters agree on {0:.2f}% of points.'.format(score))
 
 # Plot Results
-
-# AP Cluster Plot
+# PE Cluster Plot
 numFigs = 0
 PLT.figure(numFigs)
+PLT.scatter(X_PE[:, 0], X_PE[:, 1], c=y_PE, s=8, cmap='rainbow');
+PLT.xlabel('Perimeter')
+PLT.ylabel('Eccentricity')
+PLT.savefig(inputFileName + frame3c + '_ClusterPE.png', bbox_inches='tight', dpi = 400)
+
+# PE Cluster Result on Image
+numFigs += 1
+PLT.figure(numFigs)
+
+img = MPIMG.imread(imagePath)
+PLT.imshow(img)
+center = featList[:,[1,2]]
+
+colors = PLT.cm.rainbow(NP.linspace(0,1,numCluster))
+for i, c in enumerate(colors):
+	PLT.scatter(center[y_PE==i, 0], center[y_PE==i, 1], color=c, edgecolor='black', s=8);
+PLT.axis('off')
+PLT.legend(["Smaller Cells","Larger Cells"])
+PLT.savefig(inputFileName + frame3c + '_ImagePE.png', bbox_inches='tight', dpi = 400)
+
+# AP Cluster Plot
+numFigs += 1
+PLT.figure(numFigs)
 PLT.scatter(X_AP[:, 0], X_AP[:, 1], c=y_AP, s=8, cmap='rainbow');
-PLT.savefig(inputFile + frame3c + '_ClusterAP.png', bbox_inches='tight', dpi = 400)
+PLT.xlabel('Area')
+PLT.ylabel('Perimeter')
+PLT.savefig(inputFileName + frame3c + '_ClusterAP.png', bbox_inches='tight', dpi = 400)
 
 # AP Cluster Result on Image
 numFigs += 1
 PLT.figure(numFigs)
-img = MPIMG.imread(imagePath)
+
 PLT.imshow(img)
-center = featList[:,[1,2]]
-PLT.scatter(center[:, 0], center[:, 1], c=y_AP, s=8, cmap='rainbow');
-PLT.savefig(inputFile + frame3c + '_ImageAP.png', bbox_inches='tight', dpi = 400)
 
-# PCA Cluster Plot
-numFigs += 1
-PLT.figure(numFigs)
-PLT.scatter(X_PCA[:, 0], X_PCA[:, 1], c=y_PCA, s=8, cmap='rainbow');
-PLT.savefig(inputFile + frame3c + '_ClusterPCA.png', bbox_inches='tight', dpi = 400)
-
-# PCA Cluster Result on Image
-numFigs += 1
-PLT.figure(numFigs)
-img = MPIMG.imread(imagePath)
-PLT.imshow(img)
-PLT.scatter(center[:, 0], center[:, 1], c=y_PCA, s=8, cmap='rainbow');
-PLT.savefig(inputFile + frame3c + '_ImagePCa.png', bbox_inches='tight', dpi = 400)
-
-
-
-
-
+for i, c in enumerate(colors):
+	PLT.scatter(center[y_AP==i, 0], center[y_AP==i, 1], color=c, edgecolor='black', s=8);
+PLT.axis('off')
+PLT.legend(["Smaller Cells","Larger Cells"])
+PLT.savefig(inputFileName + frame3c + '_ImageAP.png', bbox_inches='tight', dpi = 400)
