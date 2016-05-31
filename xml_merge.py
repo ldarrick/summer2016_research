@@ -80,6 +80,9 @@ for time in xml2.getiterator('time'):
 		t1_cells = time1end.getchildren()
 		t2_cells = time.getchildren()
 		num_cell = len(t1_cells)
+
+		# TO DO: add assert here to check if the number of cells is the same
+
 		cell_range = range(num_cell)
 
 		area1 = NP.zeros(num_cell)

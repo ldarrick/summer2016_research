@@ -8,17 +8,14 @@
 # Required Packages: scikit-learn
 #
 # Tutorial: https://github.com/jakevdp/sklearn_pycon2015
-# 
-# Note: This code assumes that the csv file has been truncated, and only has the following columns:
-# Image Number, Object Number, Area, Center_x, Center_y, Eccentricity, Major Axis Length, Minor Axis Length, Perimeter
 
 import os
 import subprocess
 import numpy as NP
 import matplotlib.pyplot as PLT
 import matplotlib.image as MPIMG
+from shlex import split
 from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score
 from optparse import OptionParser
 
@@ -26,15 +23,15 @@ inputFile = None
 frame = -1
 outFile = 'out.csv'
 numCluster = 2
+dotSize = 5
 
 # Name of image folder and file
-imageFolder = 'OutlineCells/'
+imageFolder = 'OutlineCellsGreen/'
 imageName = 'OutlineCells'
 
 parser = OptionParser()
 parser.add_option("-i", "--input", action="store", type="string", dest="inputFile", help="path to csv file containing data", metavar="INPUT")
-parser.add_option("-f", "--frame", action="store", type="int", dest="frame", help="frame to analyze", metavar="HEIGHT")
-parser.add_option("-o", "--output", action="store", type="string", dest="outFile", help="file name of output truncated file", metavar="OUTFILE")
+parser.add_option("-f", "--frame", action="store", type="int", dest="frame", help="frame to analyze", metavar="FRAME")
 parser.add_option("-c", "--cluster", action="store", type="int", dest="cluster", help="number of clusters", metavar="CLUSTER")
 
 # Options parsing
@@ -43,11 +40,10 @@ if options.inputFile:
 	inputFile = options.inputFile
 if options.frame:
 	frame = options.frame
-if options.outFile:
-	outFile = options.outFile
 if options.cluster:
 	numCluster = options.cluster
 
+tempTruncFile = 'input_trunc_temp.csv'
 inputFileName = os.path.splitext(inputFile)[0]
 
 # Generate image file path
@@ -55,16 +51,20 @@ frame3c = "%03d"%frame
 imagePath = imageFolder + imageName + frame3c + ".png"
 
 # Truncate the csv file
-subprocess.call(['./trunc_csv.sh',inputFile, str(frame), outFile])
+# p1 = subprocess.Popen(split('cat ' + inputFile), stdout=subprocess.PIPE)
+# p2 = subprocess.Popen(split('cut -d, -f2,5,9,10,11,13,17,23,25'), stdin=p1.stdout, stdout=subprocess.PIPE)
+# p3 = subprocess.Popen(split('grep ^[^,]*,' + frame3c))
+
+subprocess.call(['./trunc_csv.sh', inputFile, frame3c, tempTruncFile])
 
 # Parse truncated csv file
-cells = open(outFile).read().split('\n')[1:-1]
+cells = open(tempTruncFile).read().split('\n')[1:-1]
 featList = []
 
 for cell in cells:
 	fields = cell.split(',')
 
-	cell_id = int(fields[1])
+	cell_id = int(fields[0])
 	area = float(fields[2])
 	center_x = float(fields[3])
 	center_y = float(fields[4])
@@ -111,43 +111,54 @@ print('The two clusters agree on {0:.2f}% of points.'.format(score))
 # Plot Results
 # PE Cluster Plot
 numFigs = 0
-PLT.figure(numFigs)
-PLT.scatter(X_PE[:, 0], X_PE[:, 1], c=y_PE, s=8, cmap='rainbow');
+colors = PLT.cm.Paired(NP.linspace(0,1,numCluster))
+
+fig = PLT.figure(numFigs)
+fig.patch.set_alpha(0)
+for i, c in enumerate(colors):
+	PLT.scatter(X_PE[y_PE==i, 0], X_PE[y_PE==i, 1], color=c, edgecolor='black', s=dotSize)
+
 PLT.xlabel('Perimeter')
 PLT.ylabel('Eccentricity')
 PLT.savefig(inputFileName + frame3c + '_ClusterPE.png', bbox_inches='tight', dpi = 400)
 
 # PE Cluster Result on Image
 numFigs += 1
-PLT.figure(numFigs)
+fig = PLT.figure(numFigs)
+fig.patch.set_alpha(0)
 
 img = MPIMG.imread(imagePath)
 PLT.imshow(img)
 center = featList[:,[1,2]]
 
-colors = PLT.cm.rainbow(NP.linspace(0,1,numCluster))
 for i, c in enumerate(colors):
-	PLT.scatter(center[y_PE==i, 0], center[y_PE==i, 1], color=c, edgecolor='black', s=8);
+	PLT.scatter(center[y_PE==i, 0], center[y_PE==i, 1], color=c, edgecolor='black', s=dotSize);
 PLT.axis('off')
-PLT.legend(["Smaller Cells","Larger Cells"])
-PLT.savefig(inputFileName + frame3c + '_ImagePE.png', bbox_inches='tight', dpi = 400)
+lgd = PLT.legend(["Smaller Cells","Larger Cells"], 
+	bbox_to_anchor=(0.0, 1.1, 1.0, 1.5), loc=3, ncol=2, mode="expand", borderaxespad=0.2, fancybox=True, shadow=True)
+PLT.savefig(inputFileName + frame3c + '_ImagePE.png', bbox_extra_artists=(lgd,), bbox_inches='tight', dpi = 400)
 
 # AP Cluster Plot
 numFigs += 1
-PLT.figure(numFigs)
-PLT.scatter(X_AP[:, 0], X_AP[:, 1], c=y_AP, s=8, cmap='rainbow');
+fig = PLT.figure(numFigs)
+fig.patch.set_alpha(0)
+for i, c in enumerate(colors):
+	PLT.scatter(X_AP[y_AP==i, 0], X_AP[y_AP==i, 1], color=c, edgecolor='black', s=dotSize)
 PLT.xlabel('Area')
 PLT.ylabel('Perimeter')
 PLT.savefig(inputFileName + frame3c + '_ClusterAP.png', bbox_inches='tight', dpi = 400)
 
 # AP Cluster Result on Image
 numFigs += 1
-PLT.figure(numFigs)
+fig = PLT.figure(numFigs)
+fig.patch.set_alpha(0)
 
 PLT.imshow(img)
-
 for i, c in enumerate(colors):
-	PLT.scatter(center[y_AP==i, 0], center[y_AP==i, 1], color=c, edgecolor='black', s=8);
+	PLT.scatter(center[y_AP==i, 0], center[y_AP==i, 1], color=c, edgecolor='black', s=dotSize);
 PLT.axis('off')
-PLT.legend(["Smaller Cells","Larger Cells"])
-PLT.savefig(inputFileName + frame3c + '_ImageAP.png', bbox_inches='tight', dpi = 400)
+lgd = PLT.legend(["Smaller Cells","Larger Cells"],
+	bbox_to_anchor=(0.0, 1.1, 1.0, 1.5), loc=3, ncol=2, mode="expand", borderaxespad=0.2, fancybox=True, shadow=True)
+PLT.savefig(inputFileName + frame3c + '_ImageAP.png', bbox_extra_artists=(lgd,), bbox_inches='tight', dpi = 400)
+
+os.remove(tempTruncFile)
