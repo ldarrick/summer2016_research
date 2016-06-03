@@ -23,7 +23,9 @@ inputFile = None
 frame = -1
 outFile = 'out.csv'
 numCluster = 2
-dotSize = 5
+imgDotSize = 5
+clusterDotSize = 12
+pixLength = 0.8
 
 # Name of image folder and file
 imageFolder = 'OutlineCellsGreen/'
@@ -116,9 +118,9 @@ colors = PLT.cm.Paired(NP.linspace(0,1,numCluster))
 fig = PLT.figure(numFigs)
 fig.patch.set_alpha(0)
 for i, c in enumerate(colors):
-	PLT.scatter(X_PE[y_PE==i, 0], X_PE[y_PE==i, 1], color=c, edgecolor='black', s=dotSize)
+	PLT.scatter(X_PE[y_PE==i, 0]*pixLength, X_PE[y_PE==i, 1], color=c, edgecolor='black', s=clusterDotSize)
 
-PLT.xlabel('Perimeter')
+PLT.xlabel(r'Perimeter ($\mu m$)')
 PLT.ylabel('Eccentricity')
 PLT.savefig(inputFileName + frame3c + '_ClusterPE.png', bbox_inches='tight', dpi = 400)
 
@@ -132,10 +134,14 @@ PLT.imshow(img)
 center = featList[:,[1,2]]
 
 for i, c in enumerate(colors):
-	PLT.scatter(center[y_PE==i, 0], center[y_PE==i, 1], color=c, edgecolor='black', s=dotSize);
+	PLT.scatter(center[y_PE==i, 0], center[y_PE==i, 1], color=c, edgecolor='black', s=imgDotSize);
 PLT.axis('off')
-lgd = PLT.legend(["Smaller Cells","Larger Cells"], 
-	bbox_to_anchor=(0.0, 1.1, 1.0, 1.5), loc=3, ncol=2, mode="expand", borderaxespad=0.2, fancybox=True, shadow=True)
+
+label1 = 'Mean Perimeter: ' + "%.2f"%est_PE_cc[0,0] + ', Mean Eccentricity: ' + "%.2f"%est_PE_cc[0,1]
+label2 = 'Mean Perimeter: ' + "%.2f"%est_PE_cc[1,0] + ', Mean Eccentricity: ' + "%.2f"%est_PE_cc[1,1]
+
+lgd = PLT.legend([label1, label2], 
+	bbox_to_anchor=(0.0, 0.95, 1.0, 1.5), loc=3, ncol=1, mode="expand", borderaxespad=0.2, fancybox=True, shadow=True)
 PLT.savefig(inputFileName + frame3c + '_ImagePE.png', bbox_extra_artists=(lgd,), bbox_inches='tight', dpi = 400)
 
 # AP Cluster Plot
@@ -143,9 +149,9 @@ numFigs += 1
 fig = PLT.figure(numFigs)
 fig.patch.set_alpha(0)
 for i, c in enumerate(colors):
-	PLT.scatter(X_AP[y_AP==i, 0], X_AP[y_AP==i, 1], color=c, edgecolor='black', s=dotSize)
-PLT.xlabel('Area')
-PLT.ylabel('Perimeter')
+	PLT.scatter(X_AP[y_AP==i, 0]*piXLength^2, X_AP[y_AP==i, 1]*pixLength, color=c, edgecolor='black', s=clusterDotSize)
+PLT.xlabel(r'Area ($\mu m^2$)')
+PLT.ylabel(r'Perimeter ($\mu m$)')
 PLT.savefig(inputFileName + frame3c + '_ClusterAP.png', bbox_inches='tight', dpi = 400)
 
 # AP Cluster Result on Image
@@ -155,10 +161,14 @@ fig.patch.set_alpha(0)
 
 PLT.imshow(img)
 for i, c in enumerate(colors):
-	PLT.scatter(center[y_AP==i, 0], center[y_AP==i, 1], color=c, edgecolor='black', s=dotSize);
+	PLT.scatter(center[y_AP==i, 0], center[y_AP==i, 1], color=c, edgecolor='black', s=imgDotSize);
 PLT.axis('off')
-lgd = PLT.legend(["Smaller Cells","Larger Cells"],
-	bbox_to_anchor=(0.0, 1.1, 1.0, 1.5), loc=3, ncol=2, mode="expand", borderaxespad=0.2, fancybox=True, shadow=True)
-PLT.savefig(inputFileName + frame3c + '_ImageAP.png', bbox_extra_artists=(lgd,), bbox_inches='tight', dpi = 400)
+
+label1 = 'Mean Area: ' + "%.2f"%est_AP_cc[0,0] + ', Mean Perimeter: ' + "%.2f"%est_AP_cc[0,1]
+label2 = 'Mean Area: ' + "%.2f"%est_AP_cc[1,0] + ', Mean Perimeter: ' + "%.2f"%est_AP_cc[1,1]
+
+lgd = PLT.legend([label1, label2],
+	bbox_to_anchor=(0.0, 1.02, 1.0, 0.102), loc=9, ncol=1, borderaxespad=0.)
+PLT.savefig(inputFileName + frame3c + '_ImageAP.png', bbox_extra_artists=(lgd,), pad_inches=0.0, bbox_inches='tight', dpi = 400)
 
 os.remove(tempTruncFile)
