@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Last modified: 26 May 2016
+# Last modified: June 9 2016
 # Author: Darrick Lee <y.l.darrick@gmail.com>
 # This file performs clustering on cells. The type of clustering performed can be specified.
 #
@@ -12,7 +12,6 @@
 #
 # Tutorial: https://github.com/jakevdp/sklearn_pycon2015
 #
-# Ty
 
 import os
 import csv
@@ -22,297 +21,182 @@ import matplotlib.pyplot as PLT
 import matplotlib.image as MPIMG
 from shlex import split
 from sklearn.cluster import KMeans
-from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import AgglomerativeClustering, FeatureAgglomeration
+from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score
 from optparse import OptionParser
+from track_cells import get_future_features, calc_velocity
 
 inputFile = None
 frame = -1
-outFile = 'out.csv'
 numCluster = 2
+numFV = 2
+clusterType = 1
+
+featureNames = ['AreaShape_Area', 'AreaShape_Perimeter', 
+	'AreaShape_Eccentricity', 'AreaShape_MajorAxisLength', 
+	'AreaShape_MinorAxisLength', 'AreaShape_Orientation']
+imageName = 'OutlineCells'
 imgDotSize = 5
 clusterDotSize = 12
 pixLength = 0.8
-clusterType = 1
 
-# HARD CODED FILE NAMES
-# CODE CURRENTLY WORKS FOR FRAME = 10
-greenInput = 'Experimental Data/Green Channel/AllMyExptMyCells.csv' # Green cells data file
-greenVelocity = 'Experimental Data/Green Channel/Green_Velocity_Frame010.csv' # Green cells velocity at frame 10
-greenImageFolder = 'Experimental Data/Green Channel/OutlineCells/OutlineCells010.png' # Green cells image folder
-redInput = 'Experimental Data/Red Channel/AllMyExptMyCells.csv' # Red cells data file
-redVelocity = 'Experimental Data/Red Channel/Red_Velocity_Frame010.csv' # Red cells velocity at frame 10
-redImageFolder = 'Experimental Data/Red Channel/OutlineCells/OutlineCells010.png' # Red cells image folder
-frame = 10;
+def clusterImagePlot(X, y, center, imgFile, colors, outFolder, fname, pxlabel, pylabel, pcacomp=0,featNames=0):
+	# Image parameters
+	imgDotSize = 5
+	clusterDotSize = 12
 
-clusterFeat_X = 'Centroid X (um)'
-clusterFeat_Y = 'Speed (um/min)'
+	# Cluster Plot
+	fig = PLT.figure()
+	for i, c in enumerate(colors):
+		PLT.scatter(X[y==i, 0], X[y==i, 1], color=c, edgecolor='black', s=clusterDotSize)
 
+	if pcacomp!=0:
+		xvector = pcacomp[0]
+		yvector = pcacomp[1]
+		numFeat = len(xvector)
 
-## OPTIONS CURRENTLY COMMENTED OUT AS FILE/FOLDERS ARE HARD CODED AS ABOVE
-# parser = OptionParser()
-# parser.add_option("-i", "--input", action="store", type="string", dest="inputFile", help="path to csv file containing data", metavar="INPUT")
-# parser.add_option("-f", "--frame", action="store", type="int", dest="frame", help="frame to analyze", metavar="FRAME")
-# parser.add_option("-c", "--cluster", action="store", type="int", dest="cluster", help="number of clusters", metavar="CLUSTER")
-# parser.add_option("-t", "--type", action="store", type="int", dest="clusterType", help="what type of clustering to perform", metavar="TYPE")
-
-# # Options parsing
-# (options, args) = parser.parse_args()
-# if options.inputFile:
-# 	inputFile = options.inputFile
-# if options.frame:
-# 	frame = options.frame
-# if options.cluster:
-# 	numCluster = options.cluster
-# if options.clusterType:
-# 	if options.clusterType == 1 or options.clusterType == 2:
-# 		clusterType = options.clusterType;
-# 	else:
-# 		print("Error: Invalid cluster type.\n")
-# 		print("type = 1: k-means clustering\n")
-# 		print("type = 2: agglomerative clustering\n")
-# 		sys.exit(1)
-
-# # Set up
-# inputFileName = os.path.splitext(inputFile)[0]
-
-# # Generate image file path
-# frame3c = "%03d"%frame
-# imagePath = imageFolder + imageName + frame3c + ".png"
-
-imagePath = 'Images/'
-
-## PARSE DATA FILES ######################################################
-fh_red = open(redInput, "rb")
-lines_red = fh_red.readlines()
-linereader_red = csv.DictReader(lines_red)
-featDict_red =dict()
-
-for row in linereader_red:
-	if(int(row['Metadata_FrameNumber']) == frame):
-
-		cell_id = int(row['ObjectNumber'])
-		area = float(row['AreaShape_Area'])
-		center_x = float(row['AreaShape_Center_X'])
-		center_y = float(row['AreaShape_Center_Y'])
-		eccentricity = float(row['AreaShape_Eccentricity'])
-		major_axis = float(row['AreaShape_MajorAxisLength'])
-		minor_axis = float(row['AreaShape_MinorAxisLength'])
-		perimeter = float(row['AreaShape_Perimeter'])
-
-		featDict_red[cell_id] = [center_x, center_y, area, perimeter, major_axis, minor_axis, eccentricity]
-
-fh_green = open(greenInput, "rb")
-lines_green = fh_green.readlines()
-linereader_green = csv.DictReader(lines_green)
-featDict_green =dict()
-
-for row in linereader_green:
-	if(int(row['Metadata_FrameNumber']) == frame):
-
-		cell_id = int(row['ObjectNumber'])
-		area = float(row['AreaShape_Area'])
-		center_x = float(row['AreaShape_Center_X'])
-		center_y = float(row['AreaShape_Center_Y'])
-		eccentricity = float(row['AreaShape_Eccentricity'])
-		major_axis = float(row['AreaShape_MajorAxisLength'])
-		minor_axis = float(row['AreaShape_MinorAxisLength'])
-		perimeter = float(row['AreaShape_Perimeter'])
-
-		featDict_green[cell_id] = [center_x, center_y, area, perimeter, major_axis, minor_axis, eccentricity]
+		for i in range(numFeat):
+			plt.arrow(0, 0, xvector[i]*max(xs), yvector[i]*max(ys),
+			          color='r', width=0.005, head_width=0.05)
+			plt.text(xvector[i]*max(xs)*1.1, yvector[i]*max(ys)*1.1,
+			         featNames[i], color='r')
 
 
-## PARSE VELOCITY FILES ##################################################
-fh_vred = open(redVelocity, "rb")
-lines_vred = fh_vred.readlines()
-linereader_vred = csv.DictReader(lines_vred)
-featList_red = []
+	PLT.xlabel(pxlabel)
+	PLT.ylabel(pylabel)
+	PLT.savefig(outFolder + 'CL_' + fname, bbox_inches='tight', dpi = 400)
 
-for row in linereader_vred:
-	cell_id = int(row['ObjectNumber'])
-	velocity_x = float(row['Velocity_X'])
-	velocity_y = float(row['Velocity_Y'])
-	speed = NP.sqrt(velocity_x**2 + velocity_y**2)
+	# Image Plot
+	fig = PLT.figure()
+	fig.patch.set_alpha(0)
 
-	featList_red.append([cell_id] + featDict_red[cell_id] + [velocity_x, velocity_y, speed])
+	img = MPIMG.imread(imgFile)
+	PLT.imshow(img)
 
-fh_vgreen = open(greenVelocity, "rb")
-lines_vgreen = fh_vgreen.readlines()
-linereader_vgreen = csv.DictReader(lines_vgreen)
-featList_green = []
+	for i, c in enumerate(colors):
+		PLT.scatter(center[y==i, 0], center[y==i, 1], color=c, edgecolor='black', s=imgDotSize);
+	PLT.axis('off')
 
-for row in linereader_vgreen:
-	cell_id = int(row['ObjectNumber'])
-	velocity_x = float(row['Velocity_X'])
-	velocity_y = float(row['Velocity_Y'])
-	speed = NP.sqrt(velocity_x**2 + velocity_y**2)
+	PLT.savefig(outFolder + 'IMG_' + fname, bbox_inches='tight', dpi = 400)
 
-	featList_green.append([cell_id] + featDict_green[cell_id] + [velocity_x, velocity_y, speed])
+# Options Parsing
+parser = OptionParser()
+parser.add_option("-i", "--input", action="store", type="string", dest="inputFile", help="path to csv file containing data", metavar="INPUT")
+parser.add_option("-I", "--imagefolder", action="store", type="string", dest="imageFolder", help="folder where OutlineCell images are stored", metavar="IMGFOLDER")
+parser.add_option("-f", "--frame", action="store", type="int", dest="frame", help="frame to analyze", metavar="FRAME")
+parser.add_option("-n", "--numFrameV", action="store", type="int", dest="numFV", help="number of future/previous frame to use to calculate velocity", metavar="NUMFRAMEVELOCITY")
+parser.add_option("-c", "--cluster", action="store", type="int", dest="cluster", help="number of clusters", metavar="CLUSTER")
+parser.add_option("-a","--aggregate", action="store_true", dest="aggregate", default=False, help="use aggregate statistics for features")
 
+# Options parsing
+(options, args) = parser.parse_args()
+if options.inputFile:
+	inputFile = options.inputFile
+if options.imageFolder:
+	imageFolder = options.imageFolder
+if options.frame:
+	frame = options.frame
+if options.numFV:
+	numFV = options.numFV
+if options.aggregate:
+	aggregate = True
+else:
+	aggregate = False
+if options.cluster:
+	numCluster = options.cluster
 
-## K-MEANS CLUSTERING #####################################################
+# Generate image file path
+frame3c = "%03d"%frame
+imagePath = imageFolder + imageName + frame3c + ".png"
 
-# Perform k-means clustering on red cells
-est_red = KMeans(numCluster)
-featList_red = NP.array(featList_red)
-X_red = featList_red[:,[1,10]]
+# Output Folder Names
+AP_folder = 'AP/'
+PCA_folder = 'SA/'
+SA_folder = 'clusterSA/'
+full_folder = 'clusterFull/'
 
-est_red.fit(X_red)
-y_red = est_red.predict(X_red)
+# Extract features from csv file
+time = frame - numFV
+cutoff = numFV*2
+cID = []
+aXY = []
+lifetime = []
+features = []
+numFrames = numFV*2 +1
+numFeatures = len(featureNames)
 
-# If cluster center 0 is larger than cluster center 1, then flip 0 and 1
-est_red_cc = est_red.cluster_centers_
-if NP.linalg.norm(est_red_cc[0,:]) > NP.linalg.norm(est_red_cc[1,:]):
-	y_red_orig = NP.copy(y_red)
-	y_red[y_red_orig == 0] = 1
-	y_red[y_red_orig == 1] = 0
+get_future_features(inputFile, time, cutoff, featureNames, cID, aXY, lifetime, features)
 
-# Perform k-means clustering on green cells
-est_green = KMeans(numCluster)
-featList_green = NP.array(featList_green)
-X_green = featList_green[:,[1,10]]
+# Keep only the cells that are tracked for all frames
+for i, cell in reversed(list(enumerate(cID))):
+	if len(cell) != numFrames:
+		cID.pop(i)
+		aXY.pop(i)
+		lifetime.pop(i)
+		features.pop(i)
+numCells = len(lifetime)
 
-est_green.fit(X_green)
-y_green = est_green.predict(X_green)
+aXY_np = NP.array(aXY)
+# Calculate the velocity
+velocity = calc_velocity(aXY,numFV,numCells)
+speed = NP.sqrt(NP.sum(velocity**2,1))
+displacement = NP.sqrt(NP.sum((aXY_np[:,0,:]-aXY_np[:,-1,:])**2,1))
 
-# If cluster center 0 is larger than cluster center 1, then flip 0 and 1
-est_green_cc = est_green.cluster_centers_
-if NP.linalg.norm(est_green_cc[0,:]) > NP.linalg.norm(est_green_cc[1,:]):
-	y_green_orig = NP.copy(y_green)
-	y_green[y_green_orig == 0] = 1
-	y_green[y_green_orig == 1] = 0
+## BUILD FEATURE VECTOR ###################################################
 
+featList = []
+featList.append([a[numFV][0] for a in aXY]) # x-centroid
+featList.append([a[numFV][1] for a in aXY]) # y-centroid
+featList.append([v[0] for v in velocity]) # x-velocity
+featList.append([v[1] for v in velocity]) # y-velocity
+featList.append(speed) # speed
+featList.append(displacement) # total displacement
+
+# Add all other features 
+for i in range(numFeatures):
+	featList.append([f[numFV][i] for f in features])
+
+fullFeatureNames = ['Centroid_X', 'Centroid_Y', 'Velocity_X','Velocity_Y', 'Speed','Displacement']+featureNames
+featListOriginal = NP.array(featList)
+featList = NP.array(featList)
+numFeat = len(featList)
+
+# Transpose and scale parameters
+featListOriginal[[0,1,5,7,9,10],:] = featListOriginal[[0,1,5,7,9,10],:]*0.8
+featListOriginal[[2,3,4],:] = featListOriginal[[2,3,4],:]*0.8*0.2
+featListOriginal[6,:] = featListOriginal[6,:]*0.8*0.8
+featListOriginal = NP.transpose(featListOriginal)
+
+## STANDARDIZE FEATURES ###################################################
+
+# Don't standardize the centroids
+for k in range(2,numFeat):
+	featList[k] = (featList[k] - NP.mean(featList[k]))/NP.sqrt(NP.var(featList[k]))
+
+# Transpose the feature list to use in clustering
+featList = NP.transpose(featList)
+feat_aggl = FeatureAgglomeration(2)
+feat_aggl.fit(featList[:,2:])
 
 ## AGGLOMERATIVE CLUSTERING ###############################################
-aggl_red = AgglomerativeClustering(numCluster)
-X_aggl_red = featList_red[:,3:]
-y_aggl_red = aggl_red.fit_predict(X_aggl_red)
 
-aggl_green = AgglomerativeClustering(numCluster)
-X_aggl_green = featList_green[:,3:]
-y_aggl_green = aggl_green.fit_predict(X_aggl_green)
+aggl_all = AgglomerativeClustering(numCluster)
+X_All = featList[:,2:]
+y_aggl_All = aggl_all.fit_predict(X_All)
 
-# If cluster center 0 is larger than cluster center 1, then flip 0 and 1
-aggl_cc = est_green.cluster_centers_
-if NP.linalg.norm(est_green_cc[0,:]) > NP.linalg.norm(est_green_cc[1,:]):
-	y_green_orig = NP.copy(y_green)
-	y_green[y_green_orig == 0] = 1
-	y_green[y_green_orig == 1] = 0
+X_XS = featListOriginal[:,[0,4]]
+X_XA = featListOriginal[:,[0,6]]
+X_AP = featListOriginal[:,[6,7]]
+X_SA = featListOriginal[:,[4,6]]
 
-## PLOT KMEANS RESULTS ####################################################
+
+## PLOT RESULTS ####################################################
 numFigs = 0
+center = featList[:,[0,1]]
 colors = PLT.cm.Paired(NP.linspace(0,1,numCluster))
 
-## RED PLOTS ###########################
-# Cluster Plot
-fig = PLT.figure(numFigs)
-fig.patch.set_alpha(0)
-for i, c in enumerate(colors):
-	PLT.scatter(X_red[y_red==i, 0]*0.8, X_red[y_red==i, 1]*0.8*0.2, color=c, edgecolor='black', s=clusterDotSize)
-
-PLT.ylim((0,12))
-PLT.xlabel(clusterFeat_X)
-PLT.ylabel(clusterFeat_Y)
-PLT.savefig('RedKMeansCluster' + '_Frame010.png', bbox_inches='tight', dpi = 400)
-
-# Image Plot
-numFigs += 1
-fig = PLT.figure(numFigs)
-fig.patch.set_alpha(0)
-
-img = MPIMG.imread(redImageFolder)
-PLT.imshow(img)
-center = featList_red[:,[1,2]]
-
-for i, c in enumerate(colors):
-	PLT.scatter(center[y_red==i, 0], center[y_red==i, 1], color=c, edgecolor='black', s=imgDotSize);
-PLT.axis('off')
-
-PLT.savefig('RedKMeansIMG' + '_Frame010.png', bbox_inches='tight', dpi = 400)
-
-## GREEN PLOTS #########################
-# Cluster Plot
-numFigs += 1
-fig = PLT.figure(numFigs)
-fig.patch.set_alpha(0)
-for i, c in enumerate(colors):
-	PLT.scatter(X_green[y_green!=i, 0]*0.8, X_green[y_green!=i, 1]*0.8*0.2, color=c, edgecolor='black', s=clusterDotSize)
-
-PLT.ylim((0,12))
-PLT.xlabel(clusterFeat_X)
-PLT.ylabel(clusterFeat_Y)
-PLT.savefig('GreenKMeansCluster'+ '_Frame010.png', bbox_inches='tight', dpi = 400)
-
-# Image Plot
-numFigs += 1
-fig = PLT.figure(numFigs)
-fig.patch.set_alpha(0)
-
-img = MPIMG.imread(greenImageFolder)
-PLT.imshow(img)
-center = featList_green[:,[1,2]]
-
-for i, c in enumerate(colors):
-	PLT.scatter(center[y_green!=i, 0], center[y_green!=i, 1], color=c, edgecolor='black', s=imgDotSize);
-PLT.axis('off')
-
-PLT.savefig('GreenKMeansIMG' + '_Frame010.png', pad_inches=0.0, bbox_inches='tight', dpi = 400)
-
-
-
-## PLOT AGGLOMERATIVE RESULTS ################################################
-## RED PLOTS #########################
-# Cluster Plot
-numFigs += 1
-fig = PLT.figure(numFigs)
-fig.patch.set_alpha(0)
-PLT.ylim((0,12))
-for i, c in enumerate(colors):
-	PLT.scatter(X_red[y_aggl_red!=i, 0]*0.8, X_green[y_aggl_red!=i, 1]*0.8*0.2, color=c, edgecolor='black', s=clusterDotSize)
-PLT.xlabel(clusterFeat_X)
-PLT.ylabel(clusterFeat_Y)
-PLT.savefig('RedAgglomerativeCluster' + '_Frame010.png', bbox_inches='tight', dpi = 400)
-
-# Image Plot
-numFigs += 1
-fig = PLT.figure(numFigs)
-fig.patch.set_alpha(0)
-
-img = MPIMG.imread(redImageFolder)
-PLT.imshow(img)
-center = featList_red[:,[1,2]]
-
-for i, c in enumerate(colors):
-	PLT.scatter(center[y_aggl_red!=i, 0], center[y_aggl_red!=i, 1], color=c, edgecolor='black', s=imgDotSize);
-PLT.axis('off')
-
-PLT.savefig('RedAgglomerativeIMG' + '_Frame010.png', bbox_inches='tight', dpi = 400)
-
-
-## GREEN PLOTS #########################
-# Cluster Plot
-numFigs += 1
-fig = PLT.figure(numFigs)
-fig.patch.set_alpha(0)
-PLT.ylim((0,12))
-for i, c in enumerate(colors):
-	PLT.scatter(X_green[y_aggl_green!=i, 0]*0.8, X_green[y_aggl_green!=i, 1]*0.8*0.2, color=c, edgecolor='black', s=clusterDotSize)
-PLT.xlabel(clusterFeat_X)
-PLT.ylabel(clusterFeat_Y)
-PLT.savefig('GreenAgglomerativeCluster' + '_Frame010.png', bbox_inches='tight', dpi = 400)
-
-# Image Plot
-numFigs += 1
-fig = PLT.figure(numFigs)
-fig.patch.set_alpha(0)
-
-img = MPIMG.imread(greenImageFolder)
-PLT.imshow(img)
-center = featList_green[:,[1,2]]
-
-for i, c in enumerate(colors):
-	PLT.scatter(center[y_aggl_green!=i, 0], center[y_aggl_green!=i, 1], color=c, edgecolor='black', s=imgDotSize);
-PLT.axis('off')
-
-PLT.savefig('GreenAgglomerativeIMG' + '_Frame010.png', bbox_inches='tight', dpi = 400)
-
+clusterImagePlot(X_XS, y_aggl_All, center, imagePath, colors, AP_folder, 'AgglomerativeXS', 'X Location (um)', 'Speed (um/min)')
+clusterImagePlot(X_XA, y_aggl_All, center, imagePath, colors, AP_folder, 'AgglomerativeXA', ' Location (um)', 'Area (um^2)')
+clusterImagePlot(X_AP, y_aggl_All, center, imagePath, colors, AP_folder, 'AgglomerativeAP', 'Area (um^2)', 'Perimeter (um)')
+clusterImagePlot(X_SA, y_aggl_All, center, imagePath, colors, AP_folder, 'AgglomerativeSA', 'Speed (um/min)', 'Area (um^2)')
