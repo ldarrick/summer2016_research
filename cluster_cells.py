@@ -41,8 +41,8 @@ imgDotSize = 5
 clusterDotSize = 12
 pixLength = 0.8
 
-def clusterImagePlot(X, y, center, imgFile, colors, outFolder, fname, pxlabel, pylabel, pcacomp=0,featNames=0):
-	# Image parameters
+def clusterImagePlot(X, y, center, colors, outFolder, fname, pxlabel, pylabel, xlim,ylim):
+	# Image par ameters
 	imgDotSize = 5
 	clusterDotSize = 12
 
@@ -51,26 +51,17 @@ def clusterImagePlot(X, y, center, imgFile, colors, outFolder, fname, pxlabel, p
 	for i, c in enumerate(colors):
 		PLT.scatter(X[y==i, 0], X[y==i, 1], color=c, edgecolor='black', s=clusterDotSize)
 
-	if pcacomp!=0:
-		xvector = pcacomp[0]
-		yvector = pcacomp[1]
-		numFeat = len(xvector)
-
-		for i in range(numFeat):
-			plt.arrow(0, 0, xvector[i]*max(xs), yvector[i]*max(ys),
-			          color='r', width=0.005, head_width=0.05)
-			plt.text(xvector[i]*max(xs)*1.1, yvector[i]*max(ys)*1.1,
-			         featNames[i], color='r')
-
-
+	axes = PLT.gca()
+	axes.set_xlim(xlim)
+	axes.set_ylim(ylim)
 	PLT.xlabel(pxlabel)
 	PLT.ylabel(pylabel)
-	PLT.savefig(outFolder + 'CL_' + fname, bbox_inches='tight', dpi = 400)
+	PLT.savefig(outFolder + fname, bbox_inches='tight', dpi = 400)
 
 	# Image Plot
 	fig = PLT.figure()
 	fig.patch.set_alpha(0)
-
+	imgFile = greenImageFolder = 'Experimental Data/Red Channel/OutlineCells/OutlineCells100.png'
 	img = MPIMG.imread(imgFile)
 	PLT.imshow(img)
 
@@ -86,8 +77,9 @@ parser.add_option("-i", "--input", action="store", type="string", dest="inputFil
 parser.add_option("-I", "--imagefolder", action="store", type="string", dest="imageFolder", help="folder where OutlineCell images are stored", metavar="IMGFOLDER")
 parser.add_option("-f", "--frame", action="store", type="int", dest="frame", help="frame to analyze", metavar="FRAME")
 parser.add_option("-n", "--numFrameV", action="store", type="int", dest="numFV", help="number of future/previous frame to use to calculate velocity", metavar="NUMFRAMEVELOCITY")
-parser.add_option("-c", "--cluster", action="store", type="int", dest="cluster", help="number of clusters", metavar="CLUSTER")
+parser.add_option("-b", "--bins", action="store", type="int", dest="bins", help="number of bins", metavar="BINS")
 parser.add_option("-a","--aggregate", action="store_true", dest="aggregate", default=False, help="use aggregate statistics for features")
+parser.add_option("-o", "--output", action="store", type="string", dest="outFile", help="path to where output folders will be stored", metavar="OUTPUT")
 
 # Options parsing
 (options, args) = parser.parse_args()
@@ -103,18 +95,20 @@ if options.aggregate:
 	aggregate = True
 else:
 	aggregate = False
-if options.cluster:
-	numCluster = options.cluster
+if options.bins:
+	numBins = options.bins
+if options.outFile:
+	outputFolder = options.outFile
 
 # Generate image file path
 frame3c = "%03d"%frame
-imagePath = imageFolder + imageName + frame3c + ".png"
+# imagePath = imageFolder + imageName + frame3c + ".png"
 
 # Output Folder Names
-AP_folder = 'AP/'
-PCA_folder = 'SA/'
-SA_folder = 'clusterSA/'
-full_folder = 'clusterFull/'
+XA_folder = outputFolder + 'XA/'
+XS_folder = outputFolder + 'XS/'
+AP_folder = outputFolder + 'AP/'
+SA_folder = outputFolder + 'SA/'
 
 # Extract features from csv file
 time = frame - numFV
@@ -181,22 +175,30 @@ feat_aggl.fit(featList[:,2:])
 
 ## AGGLOMERATIVE CLUSTERING ###############################################
 
-aggl_all = AgglomerativeClustering(numCluster)
+aggl_all = AgglomerativeClustering(2)
 X_All = featList[:,2:]
-y_aggl_All = aggl_all.fit_predict(X_All)
+y2 = aggl_all.fit_predict(X_All)
+
+## SPLIT INTO numBINS ###############################################
+percentiles = NP.floor(NP.linspace(0,100,numBins+1))
+percentiles = percentiles[:-1]
+
+bins = NP.percentile(featList[:,0],list(percentiles))
+
+y = NP.digitize(featList[:,0],bins)-1
 
 X_XS = featListOriginal[:,[0,4]]
 X_XA = featListOriginal[:,[0,6]]
 X_AP = featListOriginal[:,[6,7]]
 X_SA = featListOriginal[:,[4,6]]
 
-
 ## PLOT RESULTS ####################################################
 numFigs = 0
 center = featList[:,[0,1]]
-colors = PLT.cm.Paired(NP.linspace(0,1,numCluster))
+colorspace = NP.linspace(0,1,3)[:-1]
+colors = PLT.cm.hsv(colorspace)
 
-clusterImagePlot(X_XS, y_aggl_All, center, imagePath, colors, AP_folder, 'AgglomerativeXS', 'X Location (um)', 'Speed (um/min)')
-clusterImagePlot(X_XA, y_aggl_All, center, imagePath, colors, AP_folder, 'AgglomerativeXA', ' Location (um)', 'Area (um^2)')
-clusterImagePlot(X_AP, y_aggl_All, center, imagePath, colors, AP_folder, 'AgglomerativeAP', 'Area (um^2)', 'Perimeter (um)')
-clusterImagePlot(X_SA, y_aggl_All, center, imagePath, colors, AP_folder, 'AgglomerativeSA', 'Speed (um/min)', 'Area (um^2)')
+clusterImagePlot(X_XS, y2, center, colors, XS_folder, 'CAgglomerativeXS_'+frame3c, 'X Location (um)', 'Speed (um/min)',[0,1200],[-0.5,3])
+clusterImagePlot(X_XA, y2, center, colors, XA_folder, 'CAgglomerativeXA_'+frame3c, 'X Location (um)', 'Area (um^2)',[0,1200],[0,1400])
+clusterImagePlot(X_AP, y2, center, colors, AP_folder, 'CAgglomerativeAP_'+frame3c, 'Area (um^2)', 'Perimeter (um)',[0,1400],[0,250])
+clusterImagePlot(X_SA, y2, center, colors, SA_folder, 'CAgglomerativeSA_'+frame3c, 'Speed (um/min)', 'Area (um^2)',[-0.5,3],[0,1400])
