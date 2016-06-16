@@ -54,9 +54,21 @@ def clusterImagePlot(X, y, center, colors, outFolder, fname, pxlabel, pylabel, x
 	axes = PLT.gca()
 	axes.set_xlim(xlim)
 	axes.set_ylim(ylim)
+
 	PLT.xlabel(pxlabel)
 	PLT.ylabel(pylabel)
 	PLT.savefig(outFolder + fname, bbox_inches='tight', dpi = 400)
+
+	## USED FOR PCA
+	# sc = 15
+	# xvector = pca.components_[0]
+	# yvector = pca.components_[1]
+	# features = ['velocity_x','velocity_y','speed','displacement','area','perim','eccen','major','minor','orient'];
+	# for i in range(len(xvector)):
+	# 	PLT.arrow(0, 0, xvector[i]*sc, yvector[i]*sc,
+	# 	          color='g', width=0.005, head_width=0.05)
+	# 	PLT.text(xvector[i]*sc*1.1, yvector[i]*sc*1.1,
+	# 	         features[i], color='g')
 
 	# Image Plot
 	fig = PLT.figure()
@@ -109,6 +121,7 @@ XA_folder = outputFolder + 'XA/'
 XS_folder = outputFolder + 'XS/'
 AP_folder = outputFolder + 'AP/'
 SA_folder = outputFolder + 'SA/'
+PCA_folder = outputFolder + 'PCA/'
 
 # Extract features from csv file
 time = frame - numFV
@@ -179,6 +192,12 @@ aggl_all = AgglomerativeClustering(2)
 X_All = featList[:,2:]
 y2 = aggl_all.fit_predict(X_All)
 
+## PCA ###############################################################
+
+pca_model = PCA(2)
+X_PCA = pca_model.fit_transform(X_All)
+print(pca_model.explained_variance_ratio_)
+
 ## SPLIT INTO numBINS ###############################################
 percentiles = NP.floor(NP.linspace(0,100,numBins+1))
 percentiles = percentiles[:-1]
@@ -195,10 +214,11 @@ X_SA = featListOriginal[:,[4,6]]
 ## PLOT RESULTS ####################################################
 numFigs = 0
 center = featList[:,[0,1]]
-colorspace = NP.linspace(0,1,3)[:-1]
+colorspace = NP.linspace(0,1,numBins+1)[:-1]
 colors = PLT.cm.hsv(colorspace)
 
-clusterImagePlot(X_XS, y2, center, colors, XS_folder, 'CAgglomerativeXS_'+frame3c, 'X Location (um)', 'Speed (um/min)',[0,1200],[-0.5,3])
-clusterImagePlot(X_XA, y2, center, colors, XA_folder, 'CAgglomerativeXA_'+frame3c, 'X Location (um)', 'Area (um^2)',[0,1200],[0,1400])
-clusterImagePlot(X_AP, y2, center, colors, AP_folder, 'CAgglomerativeAP_'+frame3c, 'Area (um^2)', 'Perimeter (um)',[0,1400],[0,250])
-clusterImagePlot(X_SA, y2, center, colors, SA_folder, 'CAgglomerativeSA_'+frame3c, 'Speed (um/min)', 'Area (um^2)',[-0.5,3],[0,1400])
+# clusterImagePlot(X_XS, y, center, colors, XS_folder, 'XS_'+frame3c, 'X Location (um)', 'Speed (um/min)',[0,1200],[-0.5,3])
+# clusterImagePlot(X_XA, y, center, colors, XA_folder, 'XA_'+frame3c, 'X Location (um)', 'Area (um^2)',[0,1200],[0,1400])
+# clusterImagePlot(X_AP, y, center, colors, AP_folder, 'AP_'+frame3c, 'Area (um^2)', 'Perimeter (um)',[0,1400],[0,250])
+# clusterImagePlot(X_SA, y, center, colors, SA_folder, 'SA_'+frame3c, 'Speed (um/min)', 'Area (um^2)',[-0.5,3],[0,1400])
+clusterImagePlot(X_PCA, y, center, colors, PCA_folder, 'PCA_'+frame3c, 'PCA 1', 'PCA 2',[-10,10],[-10,10])
