@@ -18,8 +18,19 @@
 #	-1 refers to the first PCA variable
 #	-2 refers to the second PCA variable, etc.
 #
+# Note about which variables to use to cluster:
+# 	In general, use the standardized features for clustering, as this removes intrinsic
+#	scaling bias in the data. Standardization forces the mean to be 0 and variance to be 1
+#	so that each feature is weighted equally.
+#
+#	In general, use the non-standardized features for plotting so that the values have more
+#	meaning to the user.
+#
 # Required Packages: scikit-learn
+# Required External Packages: graphviz
 
+import os
+import subprocess
 import numpy as NP
 import matplotlib.pyplot as PLT
 
@@ -36,6 +47,9 @@ class FeatureCluster:
 		self.numCells = len(self.featList)
 		self.featNames = NP.genfromtxt(featcsv, delimiter=',', skip_footer=self.numCells, dtype='str')
 
+		csvNameNoExtension = os.path.splitext(featcsv)[0] # Remove extension
+		self.csvName = csvNameNoExtension.split('/')[-1] # Remove path
+
 		# Agglomerative Variables
 		self.agglomerativeLabel = None
 		self.agglomerativeCList = None # The cluster list for agglomerative clustering
@@ -49,6 +63,7 @@ class FeatureCluster:
 		# Feature Agglomeration Variables
 		self.featureTree = None # The list of children of each node in the feature agglomeration tree
 		self.featureLabels = None 
+		self.featureCList = None # The cluster list for feature agglomeration
 
 		# PCA Variables
 		self.PCAfeatList = None # The feature list transformed into PCA variables
@@ -65,12 +80,12 @@ class FeatureCluster:
 		self.agglomerativeCNum = numClusters
 		self.agglomerativeCList = clist
 
-
 	def FeatureAgglomeration(self, clist, numClusters=2):
 		FEATAGGL = FeatureAgglomeration(numClusters)
 		FEATAGGL.fit(self.featList[:,clist])
 		self.featureTree = FEATAGGL.children_	
 		self.featureLabels = FEATAGGL.labels_
+		self.featureCList = clist
 
 	def KMeansClustering(self, clist, numClusters=2):
 		KMEANS = KMeansClustering(numClusters)
@@ -85,7 +100,7 @@ class FeatureCluster:
 		self.PCAexplainedVariance = PCA_MODEL.explained_variance_ratio_
 		self.PCAvariables = clist 
 
-	def PlotAgglomerative(self, plist):
+	def PlotAgglomerative(self, plist, pathlist=None):
 		numPlots = len(plist)
 		colorspace = NP.linspace(0,1,self.agglomerativeCNum+1)[:-1]
 		colors = PLT.cm.hsv(colorspace)
@@ -113,10 +128,15 @@ class FeatureCluster:
 
 			PLT.xlabel(xlabel)
 			PLT.ylabel(ylabel)
-			PLT.savefig('Agglomerative' + str(j), bbox_inches='tight', dpi=400)
 
+			if pathlist:
+				saveName = pathlist[j] + self.csvName + '_Agglomerative_' + str(plotaxes[0]) + '_' + str(plotaxes[1])
+			else:
+				saveName = self.csvName + '_Agglomerative_' + str(plotaxes[0]) + '_' + str(plotaxes[1])
 
-	def PlotKMeans(self, plist):
+			PLT.savefig(saveName, bbox_inches='tight', dpi=400)
+
+	def PlotKMeans(self, plist, pathlist=None):
 		numPlots = len(plist)
 		colorspace = NP.linspace(0,1,self.kmeansCNum+1)[:-1]
 		colors = PLT.cm.hsv(colorspace)
@@ -144,13 +164,25 @@ class FeatureCluster:
 
 			PLT.xlabel(xlabel)
 			PLT.ylabel(ylabel)
-			PLT.savefig('KMeans' + str(j), bbox_inches='tight', dpi=400)
 
-	def PlotPCA(self, flist):
+			if pathlist:
+				saveName = pathlist[j] + self.csvName + '_KMeans_' + str(plotaxes[0]) + '_' + str(plotaxes[1])
+			else:
+				saveName = self.csvName + '_KMeans_' + str(plotaxes[0]) + '_' + str(plotaxes[1])
+
+			PLT.savefig(saveName, bbox_inches='tight', dpi=400)
+
+	def PlotPCA(self, flist=None, path=None):
+		
+		# If flist is not given, just plot all PCA variables
+		if not flist:
+			flist = self.PCAvariables
+
 		sc = 2
 		biplotList = []
 		features = []
 
+		PLT.figure()
 		# Pick out the features that are actually used in PCA
 		for f in flist:
 			if f in self.PCAvariables:
@@ -170,5 +202,70 @@ class FeatureCluster:
 		axes.set_xlim([-1,1])
 		axes.set_ylim([-1,1])
 
-		PLT.savefig('PCABiPlot', bbox_inches='tight', dpi=400)
+		saveName = path + self.csvName + '_PCACompPlot'
 
+		PLT.savefig(saveName, bbox_inches='tight', dpi=400)
+
+
+	def PlotFeatureTree(self, path=None):
+		'''
+		Description: This function uses graphviz to create the feature tree made by feature agglomeration.
+		It first generates a .gv file, which is fed into graphviz as a subprocess call to make the graph.
+
+		Feature agglomeration clusteres the various features together. To read a certain number of clusters N
+		off of the graph, eliminate all nodes numbered N and below. For example, to get 2 clusters, we simply
+		remove the root of the tree, and the two clusters of features are the two children of the root.
+
+		NOTE: The feature agglomeration function does not return the full tree. It returns a list of children
+		of each non-leaf node. Read the reference below for the 'children_' variable for more information.
+
+		Reference: http://scikit-learn.org/stable/modules/generated/sklearn.cluster.FeatureAgglomeration.html#sklearn.cluster.FeatureAgglomeration
+		'''
+
+		# Name of both the .gv and .ps file
+		filename = self.csvName + '_FeatureTree'
+
+		# Put both gv and ps files in the path if it is specified
+		if path:
+			gvName = path + filename + '.gv'
+			psName = path + filename + '.ps'
+		else:
+			gvName = filename + '.gv'
+			psName = filename + '.ps'
+
+		numFeat = len(self.featureCList)
+		mN = numFeat + len(self.featureTree) -1 # Max node in the tree
+
+		with open(gvName, 'w') as gvfile:
+
+			gvfile.write('digraph G {\n')
+
+			# Write all of the node connections
+			for i, c in enumerate(reversed(self.featureTree)):
+				# Give the child the feature name if it is a leaf; otherwise label the cluster number
+				if(c[0] < numFeat):
+					child1 = self.featNames[self.featureCList[c[0]]]
+				else:
+					child1 = str(mN-c[0]+2)
+
+				if(c[1] < numFeat):
+					child2 = self.featNames[self.featureCList[c[1]]]
+				else:
+					child2 = str(mN-c[1]+2)
+
+				txt = '\t'
+				txt += str(i+2) + ' -> {' + child1 + ', ' + child2 + '}\n'
+				gvfile.write(txt)
+
+			# Add code so that all leaves are on the same row
+			txt = '\t'
+			txt += '{rank=same;'
+			for f in self.featureCList:
+				txt += ' ' + self.featNames[f]
+			txt += '}\n'
+			gvfile.write(txt)
+
+			gvfile.write('}')
+
+		# Call graphviz function to generate the plot
+		subprocess.call(['dot', '-Tps', gvName, '-o', psName])

@@ -12,7 +12,6 @@ import time
 import datetime
 import numpy as NP
 from optparse import OptionParser
-from track_cells import get_future_features, calc_velocity
 from scipy.signal import savgol_filter
 
 inputFile = None
@@ -37,12 +36,92 @@ if options.frame:
 	frame = options.frame
 if options.numFV:
 	numFV = options.numFV
-if options.outFile:
-	outFile = options.outFile
 if options.movie:
 	numMov = options.movie
+if options.outFile:
+	outFile = options.outFile
+else:
+	# Default file name
+	if numMov == -1:
+		outFile = 'f' + str(frame) + '_singleframe.csv'
+	else:
+		outFile = 'f' + str(frame) + '_m' + str(numMov) + '.csv'
 
-# Unit conversion functions
+## GET_FUTURE_FEATURES DEFINITION #############################################
+
+def get_future_features(inputFile, time, cutoff, features, cID_future, aXY_future, 
+	lifetime_future, features_future):
+
+	# Initialize frame list
+	frame_future = []
+	cell_lastID = []
+	max_tracked_frame = 0
+
+	cur_frame = 0
+
+	with open(inputFile) as csvh:
+		
+		hreader = csv.DictReader(csvh)
+
+		for data in hreader:
+
+			cur_frame = int(data['Metadata_FrameNumber'])
+
+			if cur_frame < time:
+				continue
+
+			elif cur_frame > time + cutoff:
+				# Quit if frame is above the cutoff
+				break
+		
+			elif cur_frame == time:
+				cID_future.append([int(data['ObjectNumber'])])
+				aXY_future.append([(float(data['Location_X']), float(data['Location_Y']))])
+				lifetime_future.append(int(data['TrackObjects_Lifetime_30']))
+				frame_future.append(time)
+				cell_lastID.append(int(data['ObjectNumber']))
+
+				featureVector = [];
+				for feat in features:
+					featureVector.append(float(data[feat]))
+
+				features_future.append([featureVector])
+
+				max_tracked_frame = max(frame_future)
+	
+			else:
+
+				if cur_frame > max_tracked_frame + 2:
+					# The current frame is ahead of max tracked frame by at least 1,
+					# so there are no longer any tracked cells
+					break
+
+				parentid = int(data['TrackObjects_ParentObjectNumber_30'])
+				lifetime = int(data['TrackObjects_Lifetime_30'])
+
+				id_lifetime_frame = zip(cell_lastID,lifetime_future,frame_future)
+			
+				# Check if the parent id of the current cell was tracked
+				if (parentid, lifetime-1, cur_frame-1) in id_lifetime_frame:
+					pid_index = id_lifetime_frame.index((parentid, lifetime-1, cur_frame-1))
+
+					# Append current frame features to cell
+					cID_future[pid_index].append(int(data['ObjectNumber']))
+					aXY_future[pid_index].append((float(data['Location_X']), float(data['Location_Y'])))
+					lifetime_future[pid_index] = lifetime
+					frame_future[pid_index] = cur_frame
+
+					featureVector = [];
+					for feat in features:
+						featureVector.append(float(data[feat]))
+
+					features_future[pid_index].append(featureVector)
+
+					# Update cell_lastID and max_tracked_frame
+					cell_lastID[pid_index] = int(data['ObjectNumber'])
+					max_tracked_frame = max(frame_future)
+
+## UNIT CONVERSTION FUNCTIONS #################################################
 def conv_distance(x):
 	conv_factor = 0.8
 	units = 'um'
@@ -57,6 +136,8 @@ def conv_area(x):
 	conv_factor = 0.64
 	units = 'um^2'
 	return NP.array(x)*conv_factor, units
+
+## PERFORM CELL TRACKING ######################################################
 
 # Features to keep track of
 featureNames = ['AreaShape_Area', 'AreaShape_Perimeter', 
@@ -116,7 +197,7 @@ for i, c in enumerate(features):
 
 numFeatures = len(features[0][0][:])
 
-## BUILD FEATURE VECTOR ###################################################
+## BUILD FEATURE VECTOR #######################################################
 
 # Location list contains cell_id, location x and location y
 # These are NOT considered features
@@ -190,6 +271,7 @@ else:
 	dist_index = [0,6,7,8,9,10,16,17,18,19,20,21,22,23,24,25]
 	speed_index = [31,32,33,34,35,36,37,38,39,40,41,42,43,44,45]
 	area_index = [1,2,3,4,5]
+	loc_index = [1,2]
 
 for i in dist_index:
 	featListOrig[i][:], dist_unit = conv_distance(featListOrig[i][:])
@@ -203,7 +285,11 @@ for i in area_index:
 	featListOrig[i][:], area_unit = conv_area(featListOrig[i][:])
 	featNamesOrig[i] = featNamesOrig[i] + '_(' + area_unit + ')'
 
-## STANDARDIZE FEATURES ###################################################
+for i in loc_index:
+	locationList[i][:], dist_unit = conv_distance(locationList[i][:])
+	locationNames[i] = locationNames[i] + '_(' + dist_unit + ')'
+
+## STANDARDIZE FEATURES #######################################################
 
 featListStd = NP.array(featListStd)
 # Don't standardize the centroids
@@ -211,7 +297,7 @@ for k in range(numFeat):
 	featListStd[k] = (featListStd[k] - NP.mean(featListStd[k]))/NP.sqrt(NP.var(featListStd[k]))
 featListStd = list(featListStd)
 
-## CREATE CSV FILE ########################################################
+## CREATE CSV FILE ############################################################
 
 # Put all features into a single list
 featList = NP.transpose(locationList + featListStd + featListOrig)
