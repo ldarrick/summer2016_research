@@ -202,7 +202,10 @@ class FeatureCluster:
 		axes.set_xlim([-1,1])
 		axes.set_ylim([-1,1])
 
-		saveName = path + self.csvName + '_PCACompPlot'
+		if path:
+			saveName = path + self.csvName + '_PCACompPlot'
+		else:
+			saveName = self.csvName + '_PCACompPlot'
 
 		PLT.savefig(saveName, bbox_inches='tight', dpi=400)
 
