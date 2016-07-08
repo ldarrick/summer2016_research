@@ -76,7 +76,7 @@ def get_future_features(inputFile, time, cutoff, features, cID_future, aXY_futur
 		
 			elif cur_frame == time:
 				cID_future.append([int(data['ObjectNumber'])])
-				aXY_future.append([(float(data['Location_X']), float(data['Location_Y']))])
+				aXY_future.append([(float(data['Location_Center_X']), float(data['Location_Center_Y']))])
 				lifetime_future.append(int(data['TrackObjects_Lifetime_30']))
 				frame_future.append(time)
 				cell_lastID.append(int(data['ObjectNumber']))
@@ -107,7 +107,7 @@ def get_future_features(inputFile, time, cutoff, features, cID_future, aXY_futur
 
 					# Append current frame features to cell
 					cID_future[pid_index].append(int(data['ObjectNumber']))
-					aXY_future[pid_index].append((float(data['Location_X']), float(data['Location_Y'])))
+					aXY_future[pid_index].append((float(data['Location_Center_X']), float(data['Location_Center_Y'])))
 					lifetime_future[pid_index] = lifetime
 					frame_future[pid_index] = cur_frame
 
@@ -207,7 +207,7 @@ locationList = []
 locationList.append([int(a[numFV]) for a in cID]) # cell id
 locationList.append([a[numFV][0] for a in aXY]) # x-centroid
 locationList.append([a[numFV][1] for a in aXY]) # y-centroid
-locationNames = ['Cell_ID', 'Location_X', 'Location_Y']
+locationNames = ['Cell_ID', 'Location_Center_X', 'Location_Center_Y']
 
 # The base name of the features (these will be modified for the movie to include which statistic)
 featNamesBase = ['Displacement']+ outFeatureNames + ['Velocity_X', 'Velocity_Y', 'Speed']
@@ -233,6 +233,7 @@ if numMov == -1:
 	dist_index = [0,2,4,5]
 	speed_index = [7,8,9]
 	area_index = [1]
+	loc_index = [1,2]	
 
 else:
 	# From frame to frame+numMov

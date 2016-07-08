@@ -178,7 +178,7 @@ class FeatureCluster:
 		if not flist:
 			flist = self.PCAvariables
 
-		sc = 2
+		sc = 1.2
 		biplotList = []
 		features = []
 
