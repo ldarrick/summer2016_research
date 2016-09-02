@@ -15,7 +15,7 @@
 import tensorflow as tf
 import numpy as np
 import pickle
-from PIL import Image
+import matplotlib.pyplot as plt
 from tensorflow.examples.tutorials.mnist import input_data
 
 ## HELPER FUNCTIONS ###########################################################
@@ -44,7 +44,7 @@ def max_pool(x, n=2):
 # valid_p is the percentage of data points to use as validation data
 # 1 - train_p - valid_p is the percentage of data points to use as test data
 def splitData(featList, labelList, train_p, valid_p):
-	numData = len(labelList)
+	numData = np.shape(featList)[0]
 
 	# Randomly shuffle the data
 	perm = np.random.permutation(numData)
@@ -69,7 +69,7 @@ def splitData(featList, labelList, train_p, valid_p):
 
 # Function to create a random batch of data sets
 def nextBatch(featList, labelList, batchsize):
-	numData = len(labelList)
+	numData = np.shape(featList)[0]
 
 	# Randomly shuffle data
 	perm = np.random.permutation(numData)
@@ -175,11 +175,14 @@ class CNNClassifier:
 		self.accuracy = tf.reduce_mean(tf.cast(self.correct_prediction, tf.float32))
 		self.sess.run(tf.initialize_all_variables())
 
+		# Create saver to save and load variables
+		self.saver = tf.train.Saver()
+
 
 	## DATA INPUT AND TRAINING ####################################################
 
-	# Function: inputTrainingData
-	# Description: This function is used to input the data used to train the network
+	# Function: inputData
+	# Description: This function is used to input the data used to train, validate and test the network
 	# Input Arguments:
 	#	inputPKL: Path to a .pkl file which holds the training data in the following order:
 	#		Image Data: An array of shape (N, imgSize, imgSize), where N is the number of data points
@@ -187,10 +190,10 @@ class CNNClassifier:
 	#	train_p: Percentage of data to use as training data
 	#	valid_p: Percentage of data to use as validation data
 	# Note: The rest of the data will be used as test data
-	def inputTrainingData(self, inputPKL, train_p, valid_p):
-		inputData = open(inputPKL)
-		self.images_full = np.array(pickle.load(inputData))
-		self.labels_full = np.array(pickle.load(inputData))
+	def inputData(self, inputPKL, train_p, valid_p):
+		inputDataFile = open(inputPKL)
+		self.images_full = np.array(pickle.load(inputDataFile))
+		self.labels_full = np.array(pickle.load(inputDataFile))
 
 		# Split data into training, validation, and test sets
 		self.images_train, self.labels_train, self.images_valid, self.labels_valid, self.images_test, self.labels_test = splitData(self.images_full, self.labels_full, train_p, valid_p)
@@ -212,3 +215,45 @@ class CNNClassifier:
 
 		  	self.sess.run(self.train_step, feed_dict={self.x:images_batch, self.y_: labels_batch, self.keep_prob: 0.5})
 
+
+	## SAVE AND LOAD FUNCTIONS ####################################################
+	
+	# Function: save
+	# Description: Saves all TF variables into a checkpoint (.ckpt) file.
+	# Input Arguments:
+	#	savepath: Path to the store the output .ckpt file
+	#	fname: Name of the .ckpt file
+	def save(self, savepath, fname):
+		full_savepath = savepath + fname + '.ckpt'
+		output_path = self.saver.save(self.sess, full_savepath)
+		print("Model saved in file: %s" % output_path)
+
+	# Function: load
+	# Description: Loads a previously saved checkpoint file.
+	# NOTE: The CNNClassifier must be defined the EXACT same way as in the saved .ckpt file. This means that
+	#	all input arguments in the constructor must be the same.
+	# Input Arguments:
+	# 	loadpath: Path to .ckpt file to load
+	def load(self, loadpath):
+		self.saver.restore(self.sess, loadpath)
+		print("Model in file %s loaded successfully." % loadpath)
+
+
+	## VISUALIZATION FUNCTIONS ####################################################
+
+	# Function: plotImage
+	# Description: Plots the specified stored image
+	# Input Arguments:
+	#	imgNum: The number of the image to plot
+	def plotImage(self, imgNum):
+		plt.imshow(self.images_full[imgNum,:,:], interpolation='nearest', cmap='Greys')
+		plt.show()
+
+	# Function: plotFeatMap_1
+	# Description: Plots the weight matrix for the specified feature map in the first convolutional layer.
+	# Input Arguments:
+	#	featMapNum: The number of the feature map to plot
+	def plotFeatMap_1(self, featMapNum):
+		Wmap = self.sess.run(self.W_conv[0])
+		plt.imshow(Wmap[:,:,0,featMapNum], interpolation='nearest', cmap='Greys')
+		plt.show()
